@@ -4,12 +4,13 @@
 import time
 import logging
 from decimal import Decimal
-from trytond.pool import Pool
-from trytond.modules.payment_collect.payments import PaymentMixIn
+
 from trytond.model import ModelStorage
+from trytond.pool import Pool
 from trytond.transaction import Transaction
 from trytond.exceptions import UserError
 from trytond.i18n import gettext
+from trytond.modules.payment_collect.payments import PaymentMixIn
 
 logger = logging.getLogger(__name__)
 
@@ -21,68 +22,71 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
     def generate_collect(self, start):
         logger.info("generate_collect: visa")
         pool = Pool()
-
+        Configuration = pool.get('payment_collect.configuration')
         Company = pool.get('company.company')
-        Attachment = pool.get('ir.attachment')
         Invoice = pool.get('account.invoice')
         Currency = pool.get('currency.currency')
-        Configuration = pool.get('payment_collect.configuration')
-        fecha = Transaction().context.get('date')
-        today = pool.get('ir.date').today()
-        if fecha:
-            today = fecha
+        Attachment = pool.get('ir.attachment')
+
         config = Configuration(1)
         if config.visa_company_code:
             company_code = config.visa_company_code
         else:
             raise UserError(gettext(
                 'payment_collect_visa.msg_missing_company_code'))
-        self.periods = start.periods
-        csv_format = start.csv_format
-        self.monto_total = Decimal('0')
+        company = Company(Transaction().context.get('company'))
+        today = (Transaction().context.get('date') or
+            pool.get('ir.date').today())
+
         self.cantidad_registros = 0
-        self.type = 'send'
-        self.filename = 'DEBLIQC.txt'
+        self.monto_total = Decimal('0')
+        csv_format = start.csv_format
         format_number = self.get_format_number()
-        format_date = self.get_format_date()
+
         domain = self.get_domain(start.periods)
         domain.append(('paymode.type', '=', start.paymode_type))
         order = self.get_order()
         invoices = Invoice.search(domain, order=order)
-        self.res = []
 
+        self.res = []
         self.visa_cabecera(company_code, today)
         self.res.append(self.a_texto_cabecera(csv_format))
 
         for invoice in invoices:
+
             self.tipo_registro = '1'
             self.credit_card_number = invoice.paymode.credit_number.ljust(16)
             self.constate1 = ' '.ljust(3)
             self.nro_secuencial = str(self.cantidad_registros).rjust(8, '0')
-            self.fecha_vencimiento = start.expiration_date.strftime("%Y%m%d")
+            self.fecha_vencimiento = start.expiration_date.strftime('%Y%m%d')
             self.constate2 = '0005'
-            self.amount = Currency.round(invoice.currency, invoice.amount_to_pay)
-            self.importe = self.amount.to_eng_string().replace('.',
-                '').rjust(15, '0')
+            self.amount = Currency.round(invoice.currency,
+                invoice.amount_to_pay)
+            self.importe = self._formatear_importe(self.amount, 15)
             self.identificador_debito = invoice.party.code.rjust(15, '0')
-            self.codigo_alta_identificador = 'E'
+            self.codigo_alta_identificador = 'E' or ' '
             self.estado_registro = '  '
             self.reservado = ' '.ljust(26)
             self.marca_fin = '*'
+
+            self.res.append(self.a_texto(csv_format))
+
+            self.cantidad_registros = self.cantidad_registros + 1
             self.monto_total = Currency.round(invoice.currency,
                 self.monto_total + self.amount)
-            self.cantidad_registros = self.cantidad_registros + 1
-            self.res.append(self.a_texto(csv_format))
 
         self.visa_pie(company_code, today)
         self.res.append(self.a_texto_pie(csv_format))
+
+        self.type = 'send'
+        self.filename = 'DEBLIQC.txt'
+        self.periods = start.periods
         collect = self.attach_collect()
 
-        company = Company(Transaction().context.get('company'))
         remito_info = """
         Nombre Empresa: %s
-        Fecha de Vto: %s, Cant. Ditos: %s, Importe Total: %s
-        """ % (company.party.name, format_date(start.expiration_date),
+        Fecha de Vto: %s, Cant. Ditos: %s, Importe Total: %s""" % (
+            company.party.name, start.expiration_date.strftime('%d/%m/%Y'),
             self.cantidad_registros, format_number(self.monto_total))
         remito = Attachment()
         remito.name = 'REMITO.txt'
@@ -91,6 +95,9 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
         remito.save()
 
         return [collect]
+
+    def _formatear_importe(self, importe, digitos):
+        return importe.to_eng_string().replace('.', '').rjust(digitos, '0')
 
     def a_texto_pie(self, csv_format=False):
         """ Concatena los valores de los campos de la clase y los
@@ -186,8 +193,8 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
         logger.info("return_collect: visa")
         super().return_collect(start, {})
         pool = Pool()
-        Invoice = pool.get('account.invoice')
         Configuration = pool.get('payment_collect.configuration')
+        Invoice = pool.get('account.invoice')
 
         self.validate_return_file(self.return_file)
 
@@ -196,39 +203,44 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
         if config.payment_method_visa:
             payment_method = config.payment_method_visa
 
-        # Obtener numeros de invoices de self.start.return_file
-        order = self.get_order()
-
-        party_codes = []
-        codigo_retorno = {}
-        for line in self.return_file.decode('utf-8').splitlines():
-            if line[0] == '1':
-                party_code = line[98:109].lstrip('0')
-                party_codes.append(party_code)
-                codigo_retorno[party_code] = line[129]
+        pay_date = pool.get('ir.date').today()
 
         domain = self.get_domain(start.periods)
         domain.append(('paymode.type', '=', self.__name__))
-        domain.append(('party.code', 'in', party_codes))
-        invoices = Invoice.search(domain, order=order)
-        pay_date = pool.get('ir.date').today()
-        self.filename = 'visa-return-%s' % pay_date.strftime("%Y-%m-%d")
-
-        for invoice in invoices:
-            if codigo_retorno[invoice.party.code] == '0':
-                transaction = self.message_invoice([invoice], 'A',
-                    'Movimiento Aceptado', invoice.amount_to_pay, pay_date,
+        order = self.get_order()
+        for line in self.return_file.decode('utf-8').splitlines():
+            if line[0] != '1':
+                continue
+            invoice_domain = self.get_invoice_domain(line)
+            invoice = Invoice.search(domain + invoice_domain,
+                order=order, limit=1)
+            if not invoice:
+                continue
+            pay_amount = invoice[0].amount_to_pay
+            if line[129] == '0':
+                transaction = self.message_invoice(invoice, 'A',
+                    'Movimiento Aceptado', pay_amount, pay_date,
                     payment_method=payment_method)
             else:
-                transaction = self.message_invoice([invoice], 'R',
-                    'Movimiento Rechazado', invoice.amount_to_pay,
+                transaction = self.message_invoice(invoice, 'R',
+                    'Movimiento Rechazado', pay_amount,
                     payment_method=payment_method)
             transaction.collect = self.collect
             transaction.save()
-        self.attach_collect()
-        return [self.collect]
+
+        self.filename = 'visa-return-%s' % pay_date.strftime("%Y-%m-%d")
+        collect = self.attach_collect()
+        return [collect]
 
     @classmethod
     def validate_return_file(cls, return_file):
         if not return_file:
             raise UserError(gettext('payment_collect.msg_return_file_empty'))
+
+    @classmethod
+    def get_invoice_domain(cls, line):
+        party_code = line[98:109].lstrip('0')
+        domain = [
+            ('party.code', '=', party_code),
+            ]
+        return domain

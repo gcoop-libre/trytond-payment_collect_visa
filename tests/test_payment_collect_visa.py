@@ -18,7 +18,8 @@ def suite():
     suite = test_suite()
     suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
             PaymentCollectVISATestCase))
-    suite.addTests(doctest.DocFileSuite('scenario_payment_collect_visa.rst',
+    suite.addTests(doctest.DocFileSuite(
+            'scenario_payment_collect_visa.rst',
             tearDown=doctest_teardown, encoding='utf-8',
             checker=doctest_checker,
             optionflags=doctest.REPORT_ONLY_FIRST_FAILURE))
