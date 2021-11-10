@@ -189,7 +189,7 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
 
     def return_collect(self, start):
         logger.info("return_collect: visa")
-        super(PayModeVisa, self).return_collect(start, {})
+        super().return_collect(start, {})
         pool = Pool()
         Invoice = pool.get('account.invoice')
         Configuration = pool.get('payment_collect.configuration')
