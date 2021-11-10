@@ -3,6 +3,7 @@ Payment Collect VISA Scenario
 =============================
 
 Imports::
+
     >>> import datetime
     >>> from decimal import Decimal
     >>> from operator import attrgetter
@@ -13,12 +14,14 @@ Imports::
     ...     get_company
     >>> from trytond.modules.currency.tests.tools import get_currency
     >>> from trytond.modules.account.tests.tools import create_fiscalyear, \
-    ...     create_chart, get_accounts, create_tax, create_tax_code
+    ...     create_chart, get_accounts, create_tax
     >>> from trytond.modules.account_invoice.tests.tools import \
     ...     set_fiscalyear_invoice_sequences
+    >>> from trytond.modules.account_invoice_ar.tests.tools import \
+    ...     create_pos, get_invoice_types, get_pos, create_tax_groups
     >>> today = datetime.date.today()
 
-Install account_invoice::
+Install payment_collect_visa::
 
     >>> config = activate_modules('payment_collect_visa')
 
@@ -38,7 +41,7 @@ Create company::
 Create fiscal year::
 
     >>> fiscalyear = set_fiscalyear_invoice_sequences(
-    ...     create_fiscalyear(company, datetime.date(2019, 1, 1)))
+    ...     create_fiscalyear(company, datetime.date(2021, 1, 1)))
     >>> fiscalyear.click('create_period')
     >>> period = fiscalyear.periods[0]
 
@@ -52,25 +55,27 @@ Create chart of accounts::
     >>> account_tax = accounts['tax']
     >>> account_cash = accounts['cash']
 
+Create point of sale::
+
+    >>> _ = create_pos(company)
+    >>> pos = get_pos()
+    >>> invoice_types = get_invoice_types()
+
+Create tax groups::
+
+    >>> tax_groups = create_tax_groups()
+
 Create tax::
 
     >>> TaxCode = Model.get('account.tax.code')
     >>> tax = create_tax(Decimal('.10'))
+    >>> tax.group = tax_groups['gravado']
     >>> tax.save()
-    >>> invoice_base_code = create_tax_code(tax, 'base', 'invoice')
-    >>> invoice_base_code.save()
-    >>> invoice_tax_code = create_tax_code(tax, 'tax', 'invoice')
-    >>> invoice_tax_code.save()
-    >>> credit_note_base_code = create_tax_code(tax, 'base', 'credit')
-    >>> credit_note_base_code.save()
-    >>> credit_note_tax_code = create_tax_code(tax, 'tax', 'credit')
-    >>> credit_note_tax_code.save()
 
 Create payment method::
 
     >>> Journal = Model.get('account.journal')
     >>> PaymentMethod = Model.get('account.invoice.payment.method')
-    >>> Sequence = Model.get('ir.sequence')
     >>> journal_cash, = Journal.find([('type', '=', 'cash')])
     >>> payment_method = PaymentMethod()
     >>> payment_method.name = 'Payment Method VISA'
@@ -84,6 +89,8 @@ Create party::
     >>> Party = Model.get('party.party')
     >>> party = Party(name='Party')
     >>> party.code = '789'
+    >>> party.iva_condition = 'responsable_inscripto'
+    >>> party.vat_number = '33333333339'
     >>> party.save()
 
 Create a bank::
@@ -131,6 +138,7 @@ Create invoices::
     >>> Invoice = Model.get('account.invoice')
     >>> invoice = Invoice()
     >>> invoice.party = party
+    >>> invoice.pos = pos
     >>> invoice.invoice_date = period.start_date
     >>> invoice.paymode = paymode
     >>> line = invoice.lines.new()
@@ -142,6 +150,7 @@ Create invoices::
     Decimal('220.00')
     >>> invoice = Invoice()
     >>> invoice.party = party
+    >>> invoice.pos = pos
     >>> invoice.invoice_date = period.start_date
     >>> invoice.paymode = paymode
     >>> line = invoice.lines.new()
@@ -166,9 +175,9 @@ Generate visa collect::
     >>> payment_collect = Wizard('payment.collect.send')
     >>> payment_collect.form.csv_format = False
     >>> payment_collect.form.periods.append(Period(period.id))
-    >>> payment_collect.form.expiration_date = datetime.date(2019, 1, 15)
+    >>> payment_collect.form.expiration_date = datetime.date(2021, 1, 15)
     >>> payment_collect.form.paymode_type = 'payment.paymode.visa'
-    >>> fecha = datetime.date(2019, 1, 1)
+    >>> fecha = datetime.date(2021, 1, 1)
     >>> context = {
     ...     'company': company.id,
     ...     'date': period.end_date,
@@ -180,10 +189,7 @@ Generate visa collect::
     Decimal('330.00')
     >>> collect.cantidad_registros == 2
     True
-    >>> filename = 'DEBLIQC.txt'
     >>> attachment = collect.attachments[1]
-    >>> attachment.data
-    True
     >>> with file_open('payment_collect_visa/tests/DEBLIQC.txt', 'rb') as f:
     ...     attachment.data == f.read()
     True
