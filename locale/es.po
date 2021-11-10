@@ -1,3 +1,35 @@
 #
 msgid ""
 msgstr "Content-Type: text/plain; charset=utf-8\n"
+
+msgctxt "field:payment_collect.configuration,payment_method_visa:"
+msgid "Payment Method VISA"
+msgstr "Método de pago VISA"
+
+msgctxt "field:payment_collect.configuration,visa_company_code:"
+msgid "Company code VISA"
+msgstr "Número de comercio VISA"
+
+msgctxt "field:payment_collect.configuration.visa,company:"
+msgid "Company"
+msgstr "Empresa"
+
+msgctxt "field:payment_collect.configuration.visa,payment_method_visa:"
+msgid "Payment Method VISA"
+msgstr "Método de pago VISA"
+
+msgctxt "field:payment_collect.configuration.visa,visa_company_code:"
+msgid "Company code VISA"
+msgstr "Número de comercio VISA"
+
+msgctxt "model:ir.message,text:msg_missing_company_code"
+msgid "Debe establecer el número de comercio de VISA."
+msgstr ""
+
+msgctxt "model:payment.paymode.visa,name:"
+msgid "Pay Mode Visa"
+msgstr "Modo de pago VISA"
+
+msgctxt "model:payment_collect.configuration.visa,name:"
+msgid "Payment Collect VISA Configuration"
+msgstr "Configuración de Cobranzas VISA"
