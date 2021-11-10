@@ -8,6 +8,8 @@ from trytond.pool import Pool
 from trytond.modules.payment_collect.payments import PaymentMixIn
 from trytond.model import ModelStorage
 from trytond.transaction import Transaction
+from trytond.exceptions import UserError
+from trytond.i18n import gettext
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +17,6 @@ logger = logging.getLogger(__name__)
 class PayModeVisa(ModelStorage, PaymentMixIn):
     'Pay Mode Visa'
     __name__ = 'payment.paymode.visa'
-
-    @classmethod
-    def __setup__(cls):
-        super(PayModeVisa, cls).__setup__()
-        cls._error_messages.update({
-            'missing_company_code':
-                'Debe establecer el número de comercio de VISA.',
-                })
 
     def generate_collect(self, start):
         logger.info("generate_collect: visa")
@@ -41,7 +35,8 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
         if config.visa_company_code:
             company_code = config.visa_company_code
         else:
-            self.raise_user_error('missing_company_code')
+            raise UserError(gettext(
+                'payment_collect_visa.msg_missing_company_code'))
         self.periods = start.periods
         csv_format = start.csv_format
         self.monto_total = Decimal('0')
@@ -193,13 +188,13 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
         pool = Pool()
         Invoice = pool.get('account.invoice')
         Configuration = pool.get('payment_collect.configuration')
+
+        self.validate_return_file(self.return_file)
+
         config = Configuration(1)
         payment_method = None
         if config.payment_method_visa:
             payment_method = config.payment_method_visa
-
-        if not self.return_file:
-            self.raise_user_error('return_file_empty')
 
         # Obtener numeros de invoices de self.start.return_file
         order = self.get_order()
@@ -232,3 +227,8 @@ class PayModeVisa(ModelStorage, PaymentMixIn):
             transaction.save()
         self.attach_collect()
         return [self.collect]
+
+    @classmethod
+    def validate_return_file(cls, return_file):
+        if not return_file:
+            raise UserError(gettext('payment_collect.msg_return_file_empty'))
